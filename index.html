@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bulk Driver Import</title>
+</head>
+<body>
+
+<div id="bdi-root"></div>
+
+<script>
+geotab.addin.bulkDriverImport = function () {
+  'use strict';
+
+  var api, state;
+  var groupMap = {};        // group name (lowercase) → id
+  var importType = 'driver';
+  var parsedRows = [];
+  var importResults = [];
+
+  // ─── 1. STYLES ────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('bdi-styles')) return;
+
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&display=swap';
+    document.head.appendChild(link);
+
+    var s = document.createElement('style');
+    s.id = 'bdi-styles';
+    s.textContent = [
+      '#bdi-root{font-family:"Nunito Sans",sans-serif;color:#1F2833;max-width:960px;margin:0 auto;padding:16px}',
+      '#bdi-header{background:#25477B;color:#fff;padding:16px 20px;border-radius:8px;margin-bottom:16px}',
+      '#bdi-header h1{margin:0;font-size:20px;font-weight:700}',
+      '#bdi-header p{margin:4px 0 0;font-size:13px;opacity:.85}',
+      '.bdi-card{background:#fff;border:1px solid #D9E1E8;border-radius:8px;padding:20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)}',
+      '.bdi-section-title{font-size:12px;font-weight:700;color:#4E677E;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px}',
+      '.bdi-toggle-group{display:flex;gap:8px}',
+      '.bdi-toggle-btn{padding:7px 20px;border-radius:6px;border:1.5px solid #D9E1E8;background:#fff;color:#4E677E;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}',
+      '.bdi-toggle-btn.active{background:#25477B;border-color:#25477B;color:#fff}',
+      '.bdi-step{display:flex;align-items:flex-start;gap:14px;padding:18px 0;border-bottom:1px solid #F2F5F7}',
+      '.bdi-step:last-child{border-bottom:none;padding-bottom:0}',
+      '.bdi-step-num{width:28px;height:28px;min-width:28px;background:#E6F0FA;color:#0069BF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}',
+      '.bdi-step-num.done{background:#2D7D46;color:#fff}',
+      '.bdi-step-body{flex:1;min-width:0}',
+      '.bdi-step-label{font-size:14px;font-weight:700;color:#1F2833;margin:2px 0 6px}',
+      '.bdi-step-desc{font-size:13px;color:#4E677E;margin:0 0 10px;line-height:1.5}',
+      '.bdi-btn{padding:8px 16px;border-radius:6px;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1}',
+      '.bdi-btn-primary{background:#25477B;color:#fff}',
+      '.bdi-btn-primary:hover{background:#1d3a63}',
+      '.bdi-btn-primary:disabled{opacity:.5;cursor:not-allowed}',
+      '.bdi-btn-secondary{background:#fff;border:1.5px solid #D9E1E8;color:#4E677E}',
+      '.bdi-btn-secondary:hover{background:#F2F5F7}',
+      '.bdi-btn-success{background:#2D7D46;color:#fff}',
+      '.bdi-btn-success:hover{background:#256038}',
+      '.bdi-drop-zone{border:2px dashed #D9E1E8;border-radius:8px;padding:28px 20px;text-align:center;color:#4E677E;font-size:14px;cursor:pointer}',
+      '.bdi-drop-zone:hover,.bdi-drop-zone.drag-over{border-color:#0069BF;background:#E6F0FA}',
+      '.bdi-drop-zone input[type=file]{display:none}',
+      '.bdi-file-name{font-size:13px;color:#0069BF;margin-top:8px;font-weight:600}',
+      '.bdi-table-wrap{overflow-x:auto;border:1.5px solid #D9E1E8;border-radius:8px;margin-top:12px}',
+      '.bdi-table{width:100%;border-collapse:collapse;font-size:13px}',
+      '.bdi-table th{background:#25477B;color:#fff;padding:10px 12px;text-align:left;font-weight:600;white-space:nowrap}',
+      '.bdi-table td{padding:9px 12px;border-bottom:1px solid #F2F5F7;vertical-align:top}',
+      '.bdi-table tr:last-child td{border-bottom:none}',
+      '.bdi-table tr.row-error td{background:#FFF5F5}',
+      '.bdi-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;white-space:nowrap}',
+      '.bdi-badge-valid{background:#E8F5ED;color:#1B5E30}',
+      '.bdi-badge-error{background:#FFF0F0;color:#C51A11}',
+      '.bdi-badge-created{background:#E8F5ED;color:#1B5E30}',
+      '.bdi-badge-failed{background:#FFF0F0;color:#C51A11}',
+      '.bdi-error-list{margin:4px 0 0;padding-left:0;list-style:none}',
+      '.bdi-error-list li{font-size:12px;color:#C51A11;line-height:1.6}',
+      '.bdi-error-list li::before{content:"✕ "}',
+      '.bdi-summary{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}',
+      '.bdi-stat{background:#F2F5F7;border-radius:6px;padding:8px 14px}',
+      '.bdi-stat-num{font-size:22px;font-weight:700;color:#25477B;line-height:1.2}',
+      '.bdi-stat-label{font-size:12px;color:#4E677E}',
+      '.bdi-progress-wrap{height:6px;background:#E6EBEF;border-radius:3px;margin:10px 0}',
+      '.bdi-progress-bar{height:6px;background:#0069BF;border-radius:3px;transition:width .2s}',
+      '.bdi-status-msg{font-size:13px;color:#4E677E}',
+      '.bdi-pw-cell{font-family:monospace;font-size:12px;background:#F2F5F7;padding:2px 6px;border-radius:4px;letter-spacing:.04em}',
+      '.bdi-action-row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}',
+      '.bdi-warn{font-size:12px;color:#4E677E;margin-top:6px}',
+      '.bdi-hidden{display:none!important}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  // ─── 2. RENDER UI ─────────────────────────────────────────────────────────
+  function renderUI() {
+    var root = document.getElementById('bdi-root');
+    if (!root) return;
+    root.innerHTML =
+      '<div id="bdi-header">' +
+        '<h1>Bulk Driver / User Import</h1>' +
+        '<p>Import multiple drivers or users from a CSV file directly into this database</p>' +
+      '</div>' +
+
+      '<div class="bdi-card">' +
+        '<div class="bdi-section-title">Import Type</div>' +
+        '<div class="bdi-toggle-group">' +
+          '<button class="bdi-toggle-btn active" id="bdi-toggle-driver">Drivers</button>' +
+          '<button class="bdi-toggle-btn" id="bdi-toggle-user">Users</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="bdi-card">' +
+
+        // Step 1
+        '<div class="bdi-step">' +
+          '<div class="bdi-step-num" id="bdi-num1">1</div>' +
+          '<div class="bdi-step-body">' +
+            '<div class="bdi-step-label">Download the CSV template</div>' +
+            '<div class="bdi-step-desc">Fill in one row per person. Group names must match exactly as they appear in MyGeotab. Separate multiple groups with a pipe <strong>|</strong> character (e.g. <code>Fleet|Midwest</code>). All fields except First Name, Last Name, and Email are optional.</div>' +
+            '<button class="bdi-btn bdi-btn-secondary" id="bdi-dl-template">\u2193 Download Template</button>' +
+          '</div>' +
+        '</div>' +
+
+        // Step 2
+        '<div class="bdi-step">' +
+          '<div class="bdi-step-num" id="bdi-num2">2</div>' +
+          '<div class="bdi-step-body">' +
+            '<div class="bdi-step-label">Upload your completed CSV</div>' +
+            '<div class="bdi-drop-zone" id="bdi-drop-zone">' +
+              '<div>Drag &amp; drop your CSV here, or <strong>click to browse</strong></div>' +
+              '<div class="bdi-file-name bdi-hidden" id="bdi-file-name"></div>' +
+              '<input type="file" id="bdi-file-input" accept=".csv,text/csv">' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        // Step 3 — preview
+        '<div class="bdi-step bdi-hidden" id="bdi-step3">' +
+          '<div class="bdi-step-num" id="bdi-num3">3</div>' +
+          '<div class="bdi-step-body">' +
+            '<div class="bdi-step-label">Preview &amp; validate</div>' +
+            '<div class="bdi-summary" id="bdi-preview-summary"></div>' +
+            '<div class="bdi-table-wrap">' +
+              '<table class="bdi-table">' +
+                '<thead id="bdi-preview-thead"></thead>' +
+                '<tbody id="bdi-preview-tbody"></tbody>' +
+              '</table>' +
+            '</div>' +
+            '<div class="bdi-action-row">' +
+              '<button class="bdi-btn bdi-btn-primary bdi-hidden" id="bdi-import-btn">Import Valid Rows</button>' +
+              '<span class="bdi-status-msg bdi-hidden" id="bdi-import-status"></span>' +
+            '</div>' +
+            '<div class="bdi-progress-wrap bdi-hidden" id="bdi-progress-wrap">' +
+              '<div class="bdi-progress-bar" id="bdi-progress-bar" style="width:0%"></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        // Step 4 — results
+        '<div class="bdi-step bdi-hidden" id="bdi-step4">' +
+          '<div class="bdi-step-num done">&#10003;</div>' +
+          '<div class="bdi-step-body">' +
+            '<div class="bdi-step-label">Results</div>' +
+            '<div class="bdi-summary" id="bdi-results-summary"></div>' +
+            '<div class="bdi-table-wrap">' +
+              '<table class="bdi-table">' +
+                '<thead><tr>' +
+                  '<th>#</th><th>Name</th><th>Email</th><th>Temp Password</th><th>Status</th>' +
+                '</tr></thead>' +
+                '<tbody id="bdi-results-tbody"></tbody>' +
+              '</table>' +
+            '</div>' +
+            '<div class="bdi-action-row">' +
+              '<button class="bdi-btn bdi-btn-success" id="bdi-dl-results">\u2193 Download Results CSV</button>' +
+            '</div>' +
+            '<p class="bdi-warn">\u26a0\ufe0f Save this file \u2014 generated passwords are only shown once. Distribute them to each driver/user so they can log in and set their own password.</p>' +
+          '</div>' +
+        '</div>' +
+
+      '</div>'; // .bdi-card
+  }
+
+  // ─── 3. GROUP PRE-LOAD ────────────────────────────────────────────────────
+  function loadGroups(callback) {
+    api.call('Get', {
+      typeName: 'Group',
+      search: { includeAllTrees: true }
+    }, function (groups) {
+      groupMap = {};
+      groups.forEach(function (g) {
+        if (g.name) groupMap[g.name.toLowerCase().trim()] = g.id;
+      });
+      if (callback) callback();
+    }, function (err) {
+      console.warn('BDI: could not pre-load groups', err);
+      if (callback) callback();
+    });
+  }
+
+  // ─── 4. CSV PARSING ───────────────────────────────────────────────────────
+  function parseCSV(text) {
+    var lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    var headers = [];
+    var rows = [];
+    lines.forEach(function (line, i) {
+      if (!line.trim()) return;
+      var cells = splitCSVLine(line);
+      if (i === 0) {
+        headers = cells.map(function (h) { return h.trim().toLowerCase().replace(/\s+/g, ''); });
+      } else {
+        var row = {};
+        headers.forEach(function (h, j) { row[h] = (cells[j] || '').trim(); });
+        rows.push(row);
+      }
+    });
+    return rows;
+  }
+
+  function splitCSVLine(line) {
+    var cells = [], cell = '', inQuote = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') { cell += '"'; i++; }
+        else { inQuote = !inQuote; }
+      } else if (ch === ',' && !inQuote) {
+        cells.push(cell); cell = '';
+      } else {
+        cell += ch;
+      }
+    }
+    cells.push(cell);
+    return cells;
+  }
+
+  // ─── 5. VALIDATION ────────────────────────────────────────────────────────
+  function validateRow(row) {
+    var errors = [];
+    if (!row.firstname || !row.firstname.trim()) errors.push('Missing First Name');
+    if (!row.lastname || !row.lastname.trim()) errors.push('Missing Last Name');
+    if (!row.email || !row.email.trim() || row.email.indexOf('@') < 0) errors.push('Invalid or missing Email');
+
+    // Validate group names against the pre-loaded map
+    ['companygroups', 'drivergroups'].forEach(function (field) {
+      if (row[field]) {
+        row[field].split('|').forEach(function (g) {
+          var name = g.trim();
+          if (name && !groupMap[name.toLowerCase()]) {
+            errors.push('Unknown group: "' + name + '"');
+          }
+        });
+      }
+    });
+
+    if (row.securityclearance && row.securityclearance.trim()) {
+      if (!groupMap[row.securityclearance.trim().toLowerCase()]) {
+        errors.push('Unknown security clearance: "' + row.securityclearance + '"');
+      }
+    }
+
+    return { valid: errors.length === 0, errors: errors };
+  }
+
+  // ─── 6. PREVIEW TABLE ─────────────────────────────────────────────────────
+  function renderPreview(rows) {
+    var isDriver = importType === 'driver';
+    var thead = document.getElementById('bdi-preview-thead');
+    var tbody = document.getElementById('bdi-preview-tbody');
+    var summary = document.getElementById('bdi-preview-summary');
+    var importBtn = document.getElementById('bdi-import-btn');
+    var validCount = 0, errorCount = 0;
+
+    var driverCols = isDriver
+      ? '<th>Driver Groups</th><th>HOS Ruleset</th>'
+      : '';
+    thead.innerHTML =
+      '<tr><th>#</th><th>First Name</th><th>Last Name</th><th>Email</th>' +
+      '<th>Company Groups</th><th>Security Clearance</th>' +
+      driverCols + '<th>Status</th></tr>';
+
+    tbody.innerHTML = '';
+    rows.forEach(function (row, i) {
+      var v = validateRow(row);
+      if (v.valid) validCount++; else errorCount++;
+
+      var errHtml = v.errors.map(function (e) {
+        return '<li>' + escHtml(e) + '</li>';
+      }).join('');
+
+      var statusCell = v.valid
+        ? '<span class="bdi-badge bdi-badge-valid">&#10003; Valid</span>'
+        : '<span class="bdi-badge bdi-badge-error">&#10005; Error</span>' +
+          '<ul class="bdi-error-list">' + errHtml + '</ul>';
+
+      var driverCells = isDriver
+        ? '<td>' + escHtml(row.drivergroups || '') + '</td>' +
+          '<td>' + escHtml(row.hosruleset || '\u2014') + '</td>'
+        : '';
+
+      var tr = document.createElement('tr');
+      tr.className = v.valid ? 'row-valid' : 'row-error';
+      tr.innerHTML =
+        '<td>' + (i + 1) + '</td>' +
+        '<td>' + escHtml(row.firstname || '') + '</td>' +
+        '<td>' + escHtml(row.lastname || '') + '</td>' +
+        '<td>' + escHtml(row.email || '') + '</td>' +
+        '<td>' + escHtml(row.companygroups || '') + '</td>' +
+        '<td>' + escHtml(row.securityclearance || '') + '</td>' +
+        driverCells +
+        '<td>' + statusCell + '</td>';
+      tbody.appendChild(tr);
+    });
+
+    summary.innerHTML =
+      '<div class="bdi-stat"><div class="bdi-stat-num">' + rows.length + '</div><div class="bdi-stat-label">Total Rows</div></div>' +
+      '<div class="bdi-stat"><div class="bdi-stat-num" style="color:#2D7D46">' + validCount + '</div><div class="bdi-stat-label">Valid</div></div>' +
+      (errorCount
+        ? '<div class="bdi-stat"><div class="bdi-stat-num" style="color:#C51A11">' + errorCount + '</div><div class="bdi-stat-label">Errors</div></div>'
+        : '');
+
+    document.getElementById('bdi-step3').classList.remove('bdi-hidden');
+    importBtn.classList.remove('bdi-hidden');
+    importBtn.textContent = 'Import ' + validCount + ' Valid Row' + (validCount !== 1 ? 's' : '');
+    importBtn.disabled = (validCount === 0);
+    parsedRows = rows;
+  }
+
+  // ─── 7. PASSWORD GENERATION ───────────────────────────────────────────────
+  function generatePassword() {
+    var upper   = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+    var lower   = 'abcdefghjkmnpqrstuvwxyz';
+    var digits  = '23456789';
+    var special = '!@#$%&*';
+    var all = upper + lower + digits + special;
+
+    // Guarantee at least one of each character class
+    var pw = [
+      upper.charAt(Math.floor(Math.random() * upper.length)),
+      lower.charAt(Math.floor(Math.random() * lower.length)),
+      digits.charAt(Math.floor(Math.random() * digits.length)),
+      special.charAt(Math.floor(Math.random() * special.length))
+    ];
+    for (var i = 4; i < 12; i++) {
+      pw.push(all.charAt(Math.floor(Math.random() * all.length)));
+    }
+    // Fisher-Yates shuffle
+    for (var j = pw.length - 1; j > 0; j--) {
+      var k = Math.floor(Math.random() * (j + 1));
+      var tmp = pw[j]; pw[j] = pw[k]; pw[k] = tmp;
+    }
+    return pw.join('');
+  }
+
+  // ─── 8. BUILD ENTITY ──────────────────────────────────────────────────────
+  function resolveGroups(pipeSeparated) {
+    if (!pipeSeparated) return [];
+    return pipeSeparated.split('|').reduce(function (acc, g) {
+      var id = groupMap[g.trim().toLowerCase()];
+      if (id) acc.push({ id: id });
+      return acc;
+    }, []);
+  }
+
+  function buildEntity(row, password) {
+    var entity = {
+      firstName: row.firstname,
+      lastName:  row.lastname,
+      name:      row.email,
+      password:  password,
+      isDriver:  (importType === 'driver')
+    };
+
+    var cg = resolveGroups(row.companygroups);
+    if (cg.length) entity.companyGroups = cg;
+
+    if (row.securityclearance && row.securityclearance.trim()) {
+      var scId = groupMap[row.securityclearance.trim().toLowerCase()];
+      if (scId) entity.securityGroups = [{ id: scId }];
+    }
+
+    if (importType === 'driver') {
+      var dg = resolveGroups(row.drivergroups);
+      if (dg.length) entity.driverGroups = dg;
+
+      if (row.hosruleset && row.hosruleset.trim()) entity.hosRuleSet = row.hosruleset.trim();
+      if (row.yardmoveallowed) entity.isYardMoveEnabled = (row.yardmoveallowed.toLowerCase() === 'true');
+      if (row.personalconveyanceallowed) entity.isPersonalConveyanceEnabled = (row.personalconveyanceallowed.toLowerCase() === 'true');
+      if (row.licensenumber && row.licensenumber.trim()) entity.licenseNumber = row.licensenumber.trim();
+      if (row.licensestate  && row.licensestate.trim())  entity.licenseProvince = row.licensestate.trim();
+    }
+
+    if (row.employeenumber && row.employeenumber.trim()) entity.employeeNo = row.employeenumber.trim();
+    if (row.phonenumber    && row.phonenumber.trim())    entity.phoneNumber = row.phonenumber.trim();
+
+    return entity;
+  }
+
+  // ─── 9. IMPORT ────────────────────────────────────────────────────────────
+  function startImport() {
+    var validRows = parsedRows.filter(function (r) { return validateRow(r).valid; });
+    if (!validRows.length) return;
+    importResults = [];
+
+    var progressWrap = document.getElementById('bdi-progress-wrap');
+    var progressBar  = document.getElementById('bdi-progress-bar');
+    var statusMsg    = document.getElementById('bdi-import-status');
+    var importBtn    = document.getElementById('bdi-import-btn');
+
+    progressWrap.classList.remove('bdi-hidden');
+    statusMsg.classList.remove('bdi-hidden');
+    importBtn.disabled = true;
+
+    var index = 0;
+    function next() {
+      if (index >= validRows.length) {
+        progressBar.style.width = '100%';
+        statusMsg.textContent = 'Import complete.';
+        renderResults(importResults);
+        return;
+      }
+
+      var row = validRows[index];
+      var password = generatePassword();
+      var entity   = buildEntity(row, password);
+
+      statusMsg.textContent = 'Importing ' + (index + 1) + ' of ' + validRows.length + '\u2026';
+      progressBar.style.width = Math.round((index / validRows.length) * 100) + '%';
+
+      api.call('Add', {
+        typeName: importType === 'driver' ? 'Driver' : 'User',
+        entity: entity
+      }, function (id) {
+        importResults.push({
+          name:     row.firstname + ' ' + row.lastname,
+          email:    row.email,
+          password: password,
+          status:   'Created',
+          id:       id || ''
+        });
+        index++;
+        next();
+      }, function (err) {
+        importResults.push({
+          name:     row.firstname + ' ' + row.lastname,
+          email:    row.email,
+          password: '',
+          status:   'Error: ' + ((err && err.message) ? err.message : String(err)),
+          id:       ''
+        });
+        index++;
+        next();
+      });
+    }
+
+    next();
+  }
+
+  // ─── 10. RESULTS ──────────────────────────────────────────────────────────
+  function renderResults(results) {
+    var created = results.filter(function (r) { return r.status === 'Created'; }).length;
+    var failed  = results.length - created;
+
+    document.getElementById('bdi-results-summary').innerHTML =
+      '<div class="bdi-stat"><div class="bdi-stat-num" style="color:#2D7D46">' + created + '</div><div class="bdi-stat-label">Created</div></div>' +
+      (failed
+        ? '<div class="bdi-stat"><div class="bdi-stat-num" style="color:#C51A11">' + failed + '</div><div class="bdi-stat-label">Failed</div></div>'
+        : '');
+
+    var tbody = document.getElementById('bdi-results-tbody');
+    tbody.innerHTML = '';
+    results.forEach(function (r, i) {
+      var isOk = r.status === 'Created';
+      var badge = isOk
+        ? '<span class="bdi-badge bdi-badge-created">&#10003; Created</span>'
+        : '<span class="bdi-badge bdi-badge-failed">&#10005; Failed</span><br><small style="color:#C51A11;font-size:11px">' + escHtml(r.status) + '</small>';
+      var pwCell = isOk
+        ? '<span class="bdi-pw-cell">' + escHtml(r.password) + '</span>'
+        : '\u2014';
+
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + (i + 1) + '</td>' +
+        '<td>' + escHtml(r.name)  + '</td>' +
+        '<td>' + escHtml(r.email) + '</td>' +
+        '<td>' + pwCell + '</td>' +
+        '<td>' + badge + '</td>';
+      tbody.appendChild(tr);
+    });
+
+    var step4 = document.getElementById('bdi-step4');
+    step4.classList.remove('bdi-hidden');
+    step4.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ─── 11. TEMPLATE DOWNLOAD ────────────────────────────────────────────────
+  function downloadTemplate() {
+    var csv, filename;
+    if (importType === 'driver') {
+      csv =
+        'firstName,lastName,email,companyGroups,securityClearance,driverGroups,employeeNumber,phoneNumber,licenseNumber,licenseState,hosRuleset,yardMoveAllowed,personalConveyanceAllowed\n' +
+        'Jane,Smith,jane.smith@company.com,Fleet|Midwest,Driver Clearance,,12345,555-0100,D1234567,IL,America7Day,false,false\n' +
+        'Bob,Jones,bob.jones@company.com,Fleet,,,,,,,,false,false';
+      filename = 'bulk-driver-template.csv';
+    } else {
+      csv =
+        'firstName,lastName,email,companyGroups,securityClearance,employeeNumber,phoneNumber\n' +
+        'Alice,Admin,alice.admin@company.com,Corporate,Admin Clearance,67890,555-0200';
+      filename = 'bulk-user-template.csv';
+    }
+    triggerDownload(csv, filename, 'text/csv');
+  }
+
+  // ─── 12. RESULTS CSV DOWNLOAD ─────────────────────────────────────────────
+  function downloadResultsCSV() {
+    var lines = ['#,Name,Email,Temp Password,Status'];
+    importResults.forEach(function (r, i) {
+      lines.push([
+        i + 1,
+        csvCell(r.name),
+        csvCell(r.email),
+        csvCell(r.password),
+        csvCell(r.status)
+      ].join(','));
+    });
+    var date = new Date().toISOString().slice(0, 10);
+    triggerDownload(lines.join('\n'), 'import-results-' + date + '.csv', 'text/csv');
+  }
+
+  // ─── HELPERS ──────────────────────────────────────────────────────────────
+  function triggerDownload(content, filename, type) {
+    var blob = new Blob([content], { type: type });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function csvCell(val) {
+    if (val === null || val === undefined) return '';
+    val = String(val);
+    if (val.indexOf(',') >= 0 || val.indexOf('"') >= 0 || val.indexOf('\n') >= 0) {
+      return '"' + val.replace(/"/g, '""') + '"';
+    }
+    return val;
+  }
+
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g,  '&amp;')
+      .replace(/</g,  '&lt;')
+      .replace(/>/g,  '&gt;')
+      .replace(/"/g,  '&quot;');
+  }
+
+  function handleFile(file) {
+    document.getElementById('bdi-file-name').textContent = file.name;
+    document.getElementById('bdi-file-name').classList.remove('bdi-hidden');
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var rows = parseCSV(e.target.result);
+      if (!rows.length) {
+        alert('No data rows found in the file. Make sure the CSV has a header row and at least one data row.');
+        return;
+      }
+      renderPreview(rows);
+    };
+    reader.readAsText(file);
+  }
+
+  // ─── 13. EVENTS ───────────────────────────────────────────────────────────
+  function wireEvents() {
+    // Import type toggle
+    document.getElementById('bdi-toggle-driver').addEventListener('click', function () {
+      importType = 'driver';
+      document.getElementById('bdi-toggle-driver').classList.add('active');
+      document.getElementById('bdi-toggle-user').classList.remove('active');
+    });
+    document.getElementById('bdi-toggle-user').addEventListener('click', function () {
+      importType = 'user';
+      document.getElementById('bdi-toggle-user').classList.add('active');
+      document.getElementById('bdi-toggle-driver').classList.remove('active');
+    });
+
+    // Template download
+    document.getElementById('bdi-dl-template').addEventListener('click', downloadTemplate);
+
+    // Drop zone
+    var dropZone  = document.getElementById('bdi-drop-zone');
+    var fileInput = document.getElementById('bdi-file-input');
+
+    dropZone.addEventListener('click', function () { fileInput.click(); });
+    dropZone.addEventListener('dragover',  function (e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', function ()  { dropZone.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      var file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    // Import
+    document.getElementById('bdi-import-btn').addEventListener('click', startImport);
+
+    // Download results
+    document.getElementById('bdi-dl-results').addEventListener('click', downloadResultsCSV);
+  }
+
+  // ─── PUBLIC ───────────────────────────────────────────────────────────────
+  return {
+    initialize: function (freshApi, freshState, callback) {
+      api   = freshApi;
+      state = freshState;
+      injectStyles();
+      renderUI();
+      wireEvents();
+      loadGroups(callback);   // pre-load groups, then signal MyGeotab we're ready
+    },
+    focus: function () {},
+    blur:  function () {}
+  };
+}();
+</script>
+
+</body>
+</html>
