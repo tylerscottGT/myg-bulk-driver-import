@@ -1,14 +1,15 @@
 {
   "name": "bulkDriverImport",
   "supportEmail": "tylerscott@geotab.com",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "items": [
     {
-      "url": "https://tylerscottgt.github.io/myg-bulk-driver-import/index.html?v=2",
+      "url": "https://tylerscottgt.github.io/myg-bulk-driver-import/index.html?v=3",
       "path": "PeopleId/",
       "menuName": {
         "en": "Bulk Driver Import"
-      }
+      },
+      "icon": "https://tylerscottgt.github.io/myg-bulk-driver-import/icon.svg"
     }
   ],
   "isSigned": false
