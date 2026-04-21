@@ -91,7 +91,11 @@ geotab.addin.bulkDriverImport = function () {
   // ─── 2. RENDER UI ─────────────────────────────────────────────────────────
   function renderUI() {
     var root = document.getElementById('bdi-root');
-    if (!root) return;
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'bdi-root';
+      document.body.appendChild(root);
+    }
     root.innerHTML =
       '<div id="bdi-header">' +
         '<h1>Bulk Driver / User Import</h1>' +
@@ -608,12 +612,17 @@ geotab.addin.bulkDriverImport = function () {
   // ─── PUBLIC ───────────────────────────────────────────────────────────────
   return {
     initialize: function (freshApi, freshState, callback) {
-      api   = freshApi;
-      state = freshState;
-      injectStyles();
-      renderUI();
-      wireEvents();
-      loadGroups(callback);   // pre-load groups, then signal MyGeotab we're ready
+      try {
+        api   = freshApi;
+        state = freshState;
+        injectStyles();
+        renderUI();
+        wireEvents();
+        loadGroups(callback);   // pre-load groups, then signal MyGeotab we're ready
+      } catch (e) {
+        console.error('BulkDriverImport initialize error:', e);
+        if (callback) callback();
+      }
     },
     focus: function () {},
     blur:  function () {}
