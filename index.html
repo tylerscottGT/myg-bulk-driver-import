@@ -10,8 +10,10 @@
 <div id="bdi-root"></div>
 
 <script>
+console.log('BDI: script loaded');
 geotab.addin.bulkDriverImport = function () {
   'use strict';
+  console.log('BDI: factory called');
 
   var api, state;
   var groupMap = {};        // group name (lowercase) → id
@@ -612,6 +614,7 @@ geotab.addin.bulkDriverImport = function () {
   // ─── PUBLIC ───────────────────────────────────────────────────────────────
   return {
     initialize: function (freshApi, freshState, callback) {
+      console.log('BDI: initialize called');
       try {
         api   = freshApi;
         state = freshState;
@@ -627,7 +630,7 @@ geotab.addin.bulkDriverImport = function () {
     focus: function () {},
     blur:  function () {}
   };
-}();
+};
 </script>
 
 </body>
